@@ -56,6 +56,6 @@ class NlmXmlReader(XmlReader):
             return True
         if b'JATS-archivearticle1.dtd' in fstring:
             return True
-        if b'-//NLM//DTD JATS' in fstring:
+        if b'-//NLM//DTD J' in fstring:
             return True
         return False
