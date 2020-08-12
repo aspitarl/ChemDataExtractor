@@ -24,7 +24,7 @@ from .elements import W, R, Optional
 log = logging.getLogger(__name__)
 
 
-si_prefixes = OneOrMore(R('[YZEPTGMkhcm\u03BCunpfzyad]')) | OneOrMore(R('da'))
+si_prefixes = R('[YZEPTGMkhcm\u03BCunpfzyad]') | R('da')
 values = (R('[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?'))('value')#Matches floats + scientific notation
 
 molar_unit = Optional(si_prefixes) + R('M')
