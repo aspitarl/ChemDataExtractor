@@ -266,7 +266,7 @@ class Heading(Text):
 
 class Paragraph(Text):
 
-    parsers = [CompoundParser(), ChemicalLabelParser(), NmrParser(), IrParser(), UvvisParser(), MpParser(), TgParser(), ContextParser()]
+    parsers = [CompoundParser(), ChemicalLabelParser(), NmrParser(), IrParser(), UvvisParser(), MpParser(), TgParser(), ContextParser(), McParser()]
 
     def _repr_html_(self):
         return '<p class="cde-paragraph">' + self.text + '</p>'
