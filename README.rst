@@ -1,16 +1,11 @@
 ChemDataExtractor
 =================
 
-.. image:: http://img.shields.io/pypi/v/ChemDataExtractor.svg?style=flat-square
-    :target: https://pypi.python.org/pypi/ChemDataExtractor
-
 .. image:: http://img.shields.io/pypi/l/ChemDataExtractor.svg?style=flat-square
     :target: https://github.com/mcs07/ChemDataExtractor/blob/master/LICENSE
 
-.. image:: http://img.shields.io/travis/mcs07/ChemDataExtractor.svg?style=flat-square
-    :target: https://travis-ci.org/mcs07/ChemDataExtractor
-
 ChemDataExtractor is a toolkit for extracting chemical information from the scientific literature.
+This fork is in the process of implementing a parser for measured chemical concentrations.
 
 
 Features
@@ -27,15 +22,10 @@ Features
 Installation
 ------------
 
-To install ChemDataExtractor, simply run::
+To install the development branch of this fork of ChemDataExtractor, simply run::
 
-    pip install chemdataextractor
+    pip install git+https://github.com/maddenfederico/ChemDataExtractor@concentrationextractor
 
-Or if you are an Anaconda user, run::
-
-    conda install -c chemdataextractor chemdataextractor
-
-Alternatively, try one of the other `installation options`_.
 
 
 Documentation
@@ -51,5 +41,4 @@ ChemDataExtractor is licensed under the `MIT license`_, a permissive, business-f
 software.
 
 
-.. _`installation options`: http://chemdataextractor.org/docs/install
 .. _`MIT license`: https://github.com/mcs07/ChemDataExtractor/blob/master/LICENSE
