@@ -21,6 +21,7 @@ from ..model import Compound, MeasuredConcentration
 from .actions import merge, join
 from .base import BaseParser
 from .elements import W, R, I, Optional, OneOrMore, SkipTo
+from .common import delim, optdelim
 
 log = logging.getLogger(__name__)
 
@@ -35,9 +36,8 @@ def replace_to(tokens, start, result):
     return result
 
 si_prefixes = '^[YZEPTGMkhcm\u03BCunpfzyad]?'
-floats = R('[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')('value')#Matches floats + scientific notation
-joined_range = R('[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?[\-–−~∼˜][-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')
-# TODO: ranges with scientific notation, or wait I think they might already be covered
+floats = R('[><~]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')('value')#Matches floats + scientific notation
+joined_range = R('[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?[\-–−~∼˜][-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')
 spaced_range = (floats + R('[\-–−~∼˜]') + floats).add_action(merge)
 to_range = (floats + I('to') + floats).add_action(replace_to).add_action(merge)
 
@@ -50,22 +50,29 @@ mass_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?(mol|g)$')#I know that moles are a 
 volume_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?(mol|l|L)$')
 units = ((molar_unit | mass_unit + slash + volume_unit).add_action(merge) + opt_creatinine)('units').add_action(join)
 
-mc = (values + units)('mc')
+left_bracket_parentheses = R('[[(]')
+right_bracket_parentheses = R('[)\]]')
+
+mc = (Optional(left_bracket_parentheses).hide() + Optional(cem + optdelim) + values + units + Optional(right_bracket_parentheses).hide())('mc')
 
 mediums = (I('saliva') | I('urine') | I('blood') | I('serum') | I('plasma'))('medium')
 
 
-infix_words = W('was') | W('were') | W('of') | W('concentration') | W('concentrations') | W('normal') | W('in') | W('level') | W('levels') | W('increased') | W('to')
+infix_words = W('was') | W('were') | W('of') | W('concentration') | W('concentrations') | W('normal') | W('in') | W('level') | W('levels') | W('increased') | W('to') | W('are')
+infix_words_opt = Optional(OneOrMore(infix_words)).hide()
 # Maybe have one set of infix words that doesn't depend on context and another that does? In order to not catch treatment chemicals?
 # Or maybe that's a job for a separate parser for treatment chems
 # Either way, if the list gets too big then replace it with multiple more fleshed out infix phrases
-left_bracket_parentheses = R('[[(]')
-right_bracket_parentheses = R('[)\]]')
-normal_range = (left_bracket_parentheses.hide() + ((W('normal') + W('range')) | W('NR')) + optdelim + values)('normal_range')
-mc_phrase_cem_first = (Optional(mediums) + cem + Optional(OneOrMore(infix_words)).hide() + Optional(left_bracket_parentheses).hide() + mc + Optional(normal_range))('mc_phrase')
-mc_phrase_cem_last = (mc + Optional(OneOrMore(infix_words)).hide() +  Optional(mediums) + cem + Optional(SkipTo(W('in') + mediums)) + Optional(normal_range))('mc_phrase')
 
-mc_phrase = mc_phrase_cem_first | mc_phrase_cem_last
+#def extract_cem_from_emia(tokens, start, result):
+    
+normal_range = (left_bracket_parentheses.hide() + ((W('normal') + W('range')) | W('NR')) + optdelim + values)('normal_range')
+mc_phrase_cem_first = (Optional(mediums) + cem + infix_words_opt + mc + Optional(normal_range))('mc_phrase')
+mc_phrase_cem_last = (mc + infix_words_opt +  Optional(mediums) + cem + Optional(SkipTo(W('in') + mediums)) + Optional(normal_range))('mc_phrase')
+mc_phrase_list = (mediums + infix_words_opt + OneOrMore(cem + mc + delim))('mc_phrase')
+mc_phrase_and = (mc + cem + W('and').hide() + mc + cem + W('in').hide() + mediums)('mc_phrase')
+
+mc_phrase =  mc_phrase_and | mc_phrase_cem_first | mc_phrase_cem_last | mc_phrase_list 
 #TODO: Ideally, instead of an infix word list, I could perhaps set it up to be sensitive to certain kinds of
 # tags or parse ahead until finding a match for things like medium, etc. But that's for the iteration phase
 #TODO : make records retrieved by McParser merge with other records
@@ -74,18 +81,18 @@ class McParser(BaseParser):
     root = mc_phrase
 
     def interpret(self, result, start, end):
-        compound = Compound(
-            measured_concentrations=[
-                MeasuredConcentration(
-                    value=first(result.xpath('./mc/value/text()')),
-                    units=first(result.xpath('./mc/units/text()')),
-                    location=first(result.xpath('./medium/text()')),
-                    normal_concentration = first(result.xpath('./normal_range/value/text()'))
+        for cem_el, mc in zip(result.xpath('./cem'), result.xpath('./mc')):
+            compound = Compound(
+                measured_concentrations=[
+                    MeasuredConcentration(
+                        value=first(mc.xpath('./value/text()')),
+                        units=first(mc.xpath('./units/text()')),
+                        location=first(result.xpath('./medium/text()')),
+                        normal_concentration = first(result.xpath('./normal_range/value/text()'))
+                        )
+                    ]
                 )
-            ]
-        )
-        cem_el = first(result.xpath('./cem'))
-        if cem_el is not None:
-            compound.names = cem_el.xpath('./name/text()')
-            compound.labels = cem_el.xpath('./label/text()')
-        yield compound
+            if cem_el is not None:
+                compound.names = cem_el.xpath('./name/text()')
+                compound.labels = cem_el.xpath('./label/text()')
+                yield compound

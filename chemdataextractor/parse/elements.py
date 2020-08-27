@@ -543,7 +543,7 @@ class Group(ParseElementEnhance):
 
 
 class SkipTo(ParseElementEnhance):
-
+    """Skips ahead to match the given expression. Seems to only work with basic expressions (W, R, T, I)"""
     def __init__(self, expr, include=False):
         super(SkipTo, self).__init__(expr)
         self.include = include
