@@ -12,16 +12,14 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 import logging
-import re
 
 from chemdataextractor.parse.cem import cem
-from chemdataextractor.parse.common import slash, optdelim
+from chemdataextractor.parse.common import slash, delim, optdelim
 from chemdataextractor.utils import first
 from ..model import Compound, MeasuredConcentration
 from .actions import merge, join
 from .base import BaseParser
 from .elements import W, R, I, Optional, OneOrMore, SkipTo
-from .common import delim, optdelim
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +70,7 @@ mc_phrase_cem_last = (mc + infix_words_opt +  Optional(mediums) + cem + Optional
 mc_phrase_list = (mediums + infix_words_opt + OneOrMore(cem + mc + delim))('mc_phrase')
 mc_phrase_and = (mc + cem + W('and').hide() + mc + cem + W('in').hide() + mediums)('mc_phrase')
 
-mc_phrase =  mc_phrase_and | mc_phrase_cem_first | mc_phrase_cem_last | mc_phrase_list 
+mc_phrase =  mc_phrase_and | mc_phrase_cem_first | mc_phrase_cem_last | mc_phrase_list
 #TODO: Ideally, instead of an infix word list, I could perhaps set it up to be sensitive to certain kinds of
 # tags or parse ahead until finding a match for things like medium, etc. But that's for the iteration phase
 #TODO : make records retrieved by McParser merge with other records
@@ -95,4 +93,4 @@ class McParser(BaseParser):
             if cem_el is not None:
                 compound.names = cem_el.xpath('./name/text()')
                 compound.labels = cem_el.xpath('./label/text()')
-                yield compound
+            yield compound

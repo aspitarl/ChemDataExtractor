@@ -21,7 +21,8 @@ from ..parse.table import CompoundHeadingParser, CompoundCellParser, UvvisAbsHea
     ElectrochemicalPotentialHeadingParser, ElectrochemicalPotentialCellParser, IrHeadingParser, IrCellParser, \
     SolventCellParser, SolventHeadingParser, SolventInHeadingParser, UvvisAbsEmiQuantumYieldHeadingParser, \
     UvvisAbsEmiQuantumYieldCellParser, MeltingPointHeadingParser, MeltingPointCellParser, GlassTransitionHeadingParser, GlassTransitionCellParser, TempInHeadingParser, \
-    UvvisAbsDisallowedHeadingParser, UvvisEmiQuantumYieldHeadingParser, UvvisEmiQuantumYieldCellParser
+    UvvisAbsDisallowedHeadingParser, UvvisEmiQuantumYieldHeadingParser, UvvisEmiQuantumYieldCellParser, McCompoundHeadingParser, McCompoundCellParser, \
+    McValueHeadingParser, McValueCellParser
 # TODO: Sort out the above import... import module instead
 from ..nlp.tag import NoneTagger
 from ..nlp.tokenize import FineWordTokenizer
@@ -31,6 +32,7 @@ from .text import Sentence
 
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 
 class Table(CaptionedElement):
@@ -51,7 +53,9 @@ class Table(CaptionedElement):
         (GlassTransitionHeadingParser(), GlassTransitionCellParser()),
         (SolventHeadingParser(), SolventCellParser()),
         (SolventInHeadingParser(),),
-        (TempInHeadingParser(),)
+        (TempInHeadingParser(),),
+        (McCompoundHeadingParser(), McCompoundCellParser()),
+        (McValueHeadingParser(), McValueCellParser())
     ]
 
     def __init__(self, caption, label=None, headings=None, rows=None, footnotes=None, **kwargs):
@@ -115,7 +119,7 @@ class Table(CaptionedElement):
         log.debug('Parsing table headers')
 
         for i, col_headings in enumerate(zip(*self.headings)):
-            # log.info('Considering column %s' % i)
+            log.info('Considering column %s' % i)
             for parsers in self.parsers:
                 log.debug(parsers)
                 heading_parser = parsers[0]

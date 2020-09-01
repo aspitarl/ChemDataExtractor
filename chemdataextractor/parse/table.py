@@ -15,13 +15,13 @@ import logging
 import re
 from lxml.builder import E
 
-from .common import delim
+from .common import delim, optdelim, slash
 from ..utils import first
 from ..model import Compound, UvvisSpectrum, UvvisPeak, QuantumYield, FluorescenceLifetime, MeltingPoint, GlassTransition
-from ..model import ElectrochemicalPotential, IrSpectrum, IrPeak
+from ..model import ElectrochemicalPotential, IrSpectrum, IrPeak, MeasuredConcentration
 from .actions import join, merge, fix_whitespace
 from .base import BaseParser
-from .cem import chemical_label, label_before_name, chemical_name, chemical_label_phrase, solvent_name, lenient_chemical_label
+from .cem import chemical_label, label_before_name, chemical_name, chemical_label_phrase, solvent_name, lenient_chemical_label, cem
 from .elements import R, I, W, Optional, ZeroOrMore, Any, OneOrMore, Start, End, Group, Not
 
 log = logging.getLogger(__name__)
@@ -206,6 +206,23 @@ glass_transition_cell = (
 )('glass_transition_cell')
 
 caption_context = Group(subject_phrase | solvent_phrase | temp_phrase)('caption_context')
+
+
+mc_opt_creatinine = Optional(W('creatinine') | W('Cr'))
+mc_floats = R('[><~]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')('value')#Matches floats + scientific notation
+mc_joined_range = R('[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?[\-–−~∼˜][-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')('value')
+mc_spaced_range = (mc_floats + R('[\-–−~∼˜]') + mc_floats).add_action(merge)('value')
+
+mc_molar_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?M$')
+mc_mass_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?\s?(mol|g)$')#I know that moles are a unit of quantity, don't @ me
+mc_volume_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?(mol|l|L)$')
+mc_units = ((mc_molar_unit | mc_mass_unit + slash + mc_volume_unit).add_action(merge) + mc_opt_creatinine)('units').add_action(join)
+
+mc_compound_heading = R('(^|\b)(comp((oun)?d)?|substance|analyte|metabolite|metabolic)(e?s)?($|\b)', re.I)
+mc_compound_cell = (cem + optdelim + Optional(mc_units))('mc_cem_phrase') 
+
+mc_value_heading = (I('concentration') + Optional(mc_units))('mc_value_heading')
+mc_value_cell = ((mc_joined_range | mc_spaced_range | mc_floats) + Optional(mc_units))('mc_value_cell')
 
 
 class CompoundHeadingParser(BaseParser):
@@ -617,6 +634,7 @@ class GlassTransitionHeadingParser(BaseParser):
             )
         yield c
 
+
 class GlassTransitionCellParser(BaseParser):
     """"""
     root = glass_transition_cell
@@ -627,12 +645,13 @@ class GlassTransitionCellParser(BaseParser):
         for tg in result.xpath('./temp'):
             c.glass_transitions.append(
                 GlassTransition(
-                    value=first(mp.xpath('./value/text()')),
-                    units=first(mp.xpath('./units/text()'))
+                    value=first(tg.xpath('./value/text()')),
+                    units=first(tg.xpath('./units/text()'))
                 )
             )
         if c.glass_transition:
             yield c
+
 
 class ElectrochemicalPotentialHeadingParser(BaseParser):
     """"""
@@ -667,6 +686,53 @@ class ElectrochemicalPotentialCellParser(BaseParser):
         if c.electrochemical_potentials:
             yield c
 
+
+class McCompoundHeadingParser(BaseParser):
+    """"""
+    root = mc_compound_heading
+
+    def interpret(self, result, start, end):
+        """"""
+        yield Compound()
+
+
+class McCompoundCellParser(BaseParser):
+    """"""
+    root = mc_compound_cell
+
+    def interpret(self, result, start, end):
+        c = Compound(
+            names=result.xpath('./cem/name/text()'),
+            labels=result.xpath('./cem/label/text()'),
+            measured_concentrations=[
+                MeasuredConcentration(units=first(result.xpath('./units/text()')))
+                ]
+        )
+        yield c
+
+class McValueHeadingParser(BaseParser):
+    """"""
+    root = mc_value_heading
+
+    def interpret(self, result, start, end):
+        """"""
+        yield Compound()
+
+
+class McValueCellParser(BaseParser):
+    """"""
+    root = mc_value_cell
+
+    def interpret(self, result, start, end):
+        c = Compound(
+            measured_concentrations=[
+                MeasuredConcentration(
+                    value=first(result.xpath('./value/text()')),
+                    units=first(result.xpath('./units/text()'))
+                    )
+                ]
+            )
+        yield c
 
 class CaptionContextParser(BaseParser):
     """"""
