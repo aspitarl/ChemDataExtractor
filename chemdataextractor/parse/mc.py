@@ -34,12 +34,13 @@ def replace_to(tokens, start, result):
     return result
 
 si_prefixes = '^[YZEPTGMkhcm\u03BCunpfzyad]?'
-floats = R('[><~]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')('value')#Matches floats + scientific notation
-joined_range = R('[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?[\-–−~∼˜][-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')
+floats = R('[><~]?\d*\.?\d+([eE][-+]?\d+)?')('value')#Matches floats + scientific notation
+joined_range = R('\d*\.?\d+([eE][-+]?\d+)?[\-–−~∼˜][-+]?\d*\.?\d+([eE][-+]?\d+)?')
 spaced_range = (floats + R('[\-–−~∼˜]') + floats).add_action(merge)
 to_range = (floats + I('to') + floats).add_action(replace_to).add_action(merge)
+stddev_range = (floats + R('±') + floats).add_action(merge)
 
-values = (joined_range | spaced_range | to_range | floats)('value')
+values = (joined_range | spaced_range | to_range | floats | stddev_range)('value')
 
 opt_creatinine = Optional(W('creatinine') | W('Cr'))
 
@@ -73,13 +74,12 @@ mc_phrase_and = (mc + cem + W('and').hide() + mc + cem + W('in').hide() + medium
 mc_phrase =  mc_phrase_and | mc_phrase_cem_first | mc_phrase_cem_last | mc_phrase_list
 #TODO: Ideally, instead of an infix word list, I could perhaps set it up to be sensitive to certain kinds of
 # tags or parse ahead until finding a match for things like medium, etc. But that's for the iteration phase
-#TODO : make records retrieved by McParser merge with other records
 class McParser(BaseParser):
     """"""
     root = mc_phrase
 
     def interpret(self, result, start, end):
-        for cem_el, mc in zip(result.xpath('./cem'), result.xpath('./mc')):
+        for cem_el, mc in zip(result.xpath('/cem'), result.xpath('./mc')):
             compound = Compound(
                 measured_concentrations=[
                     MeasuredConcentration(

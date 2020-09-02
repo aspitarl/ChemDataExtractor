@@ -209,20 +209,22 @@ caption_context = Group(subject_phrase | solvent_phrase | temp_phrase)('caption_
 
 
 mc_opt_creatinine = Optional(W('creatinine') | W('Cr'))
-mc_floats = R('[><~]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')('value')#Matches floats + scientific notation
-mc_joined_range = R('[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?[\-–−~∼˜][-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?')('value')
-mc_spaced_range = (mc_floats + R('[\-–−~∼˜]') + mc_floats).add_action(merge)('value')
+mc_floats = (R('[><~]?\d*\.?\d+[eE]?') + Optional(R('[-+]') + R('\d+'))).add_action(merge)
+mc_joined_range = R('\d*\.?\d+([eE][-+]?\d+)?[\-–−~∼˜][-+]?\d*\.?\d+([eE][-+]?\d+)?')
+mc_spaced_range = (mc_floats + W('[\-–−~∼˜]') + mc_floats).add_action(merge)
+mc_stddev_range = (mc_floats + W('±') + mc_floats).add_action(merge)
+mc_values = (mc_stddev_range | mc_joined_range | mc_spaced_range | mc_floats)('value')
 
 mc_molar_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?M$')
-mc_mass_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?\s?(mol|g)$')#I know that moles are a unit of quantity, don't @ me
+mc_mass_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?\s?(mol|g)$')
 mc_volume_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?(mol|l|L)$')
-mc_units = ((mc_molar_unit | mc_mass_unit + slash + mc_volume_unit).add_action(merge) + mc_opt_creatinine)('units').add_action(join)
+mc_units = ((mc_molar_unit | (mc_mass_unit + slash + mc_volume_unit)).add_action(merge) + mc_opt_creatinine)('units').add_action(join)
 
 mc_compound_heading = R('(^|\b)(comp((oun)?d)?|substance|analyte|metabolite|metabolic)(e?s)?($|\b)', re.I)
 mc_compound_cell = (cem + optdelim + Optional(mc_units))('mc_cem_phrase') 
 
-mc_value_heading = (I('concentration') + Optional(mc_units))('mc_value_heading')
-mc_value_cell = ((mc_joined_range | mc_spaced_range | mc_floats) + Optional(mc_units))('mc_value_cell')
+mc_value_heading = (I('concentration') + optdelim + Optional(mc_units))('mc_value_heading')
+mc_value_cell = (mc_values + optdelim + Optional(mc_units))('mc_value_cell')
 
 
 class CompoundHeadingParser(BaseParser):
@@ -688,7 +690,7 @@ class ElectrochemicalPotentialCellParser(BaseParser):
 
 
 class McCompoundHeadingParser(BaseParser):
-    """"""
+    """Checks for heading titles that indicate measured compounds"""
     root = mc_compound_heading
 
     def interpret(self, result, start, end):
@@ -697,30 +699,39 @@ class McCompoundHeadingParser(BaseParser):
 
 
 class McCompoundCellParser(BaseParser):
-    """"""
+    """Checks for measured compound names and contextual units"""
     root = mc_compound_cell
 
     def interpret(self, result, start, end):
         c = Compound(
             names=result.xpath('./cem/name/text()'),
             labels=result.xpath('./cem/label/text()'),
-            measured_concentrations=[
-                MeasuredConcentration(units=first(result.xpath('./units/text()')))
-                ]
         )
+        mc_units = result.xpath('./units/text()')
+        
+        if mc_units:
+            c.measured_concentrations.append(
+                MeasuredConcentration(units=mc_units)
+                )
+            
         yield c
 
 class McValueHeadingParser(BaseParser):
-    """"""
+    """Checks for heading titles that indicate chemical concentration measurement values and contextual units"""
     root = mc_value_heading
 
     def interpret(self, result, start, end):
-        """"""
-        yield Compound()
+        mc_units = first(result.xpath('./units/text()'))
+        c = Compound()
+        if mc_units:
+            c.measured_concentrations.append(
+                MeasuredConcentration(units=mc_units)
+            )
+        yield c
 
 
 class McValueCellParser(BaseParser):
-    """"""
+    """Checks for chemical concentration values and units"""
     root = mc_value_cell
 
     def interpret(self, result, start, end):
