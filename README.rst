@@ -22,7 +22,7 @@ Features
 Installation
 ------------
 
-To install the development branch of this fork of ChemDataExtractor, simply run::
+To install the development branch of this fork of ChemDataExtractor, simply run in a terminal::
 
     pip install git+https://github.com/maddenfederico/ChemDataExtractor@concentrationextractor
 
