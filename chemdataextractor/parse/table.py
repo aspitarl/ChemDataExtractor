@@ -21,7 +21,7 @@ from ..model import Compound, UvvisSpectrum, UvvisPeak, QuantumYield, Fluorescen
 from ..model import ElectrochemicalPotential, IrSpectrum, IrPeak, MeasuredConcentration
 from .actions import join, merge, fix_whitespace
 from .base import BaseParser
-from .cem import chemical_label, label_before_name, chemical_name, chemical_label_phrase, solvent_name, lenient_chemical_label, cem
+from .cem import chemical_label, label_before_name, chemical_name, chemical_label_phrase, solvent_name, lenient_chemical_label, lenient_name, cem, strict_chemical_label, prefixed_label
 from .elements import R, I, W, Optional, ZeroOrMore, Any, OneOrMore, Start, End, Group, Not
 
 log = logging.getLogger(__name__)
@@ -31,8 +31,8 @@ delims = ZeroOrMore(delim)
 minus = R('^[\-–−‒]$')
 
 
-name_blacklist = R('^([\d\.]+)$')
-
+name_blacklist = R('^([\d\.]+)$') | R('\w(controls|control|et al|type)', re.I)
+#(ZeroOrMore(Any()) + R('(controls|et al|type)', re.I) + ZeroOrMore(Any()))
 #: Compound identifier column heading
 compound_heading = R('(^|\b)(comp((oun)?d)?|molecule|ligand|oligomer|complex|dye|porphyrin|substance|sample|material|catalyst|acronym|isomer|(co)?polymer|chromophore|species|quinone|ether|diene|adduct|acid|radical|monomer|amine|analyte|product|system|(photo)?sensitiser|phthalocyanine|MPc)(e?s)?($|\b)', re.I)
 solvent_heading = R('(^|\b)(solvent)s?($|\b)', re.I)
@@ -45,7 +45,6 @@ compound_cell = Group(
     (Not(Start() + OneOrMore(name_blacklist) + End()) + OneOrMore(Any())('name').add_action(join).add_action(fix_whitespace) + Optional(W('(').hide() + chemical_label + W(')').hide()))('cem') |
     label_before_name
 )('cem_phrase')
-
 
 uvvis_emi_title = (
     I('emission') + R('max(ima)?') |
@@ -70,6 +69,7 @@ extinction_units = (
         I('l') + I('cm') + minus + I('1') + I('mol') + minus + I('1')
     )) | multiplier
 )('extinction_units').add_action(join)
+
 
 ir_title = (
     R('^(FT-?)?IR$') + Optional(I('absorption'))
@@ -180,7 +180,10 @@ electrochemical_potential_cell = (
     electrochemical_potential_value + ZeroOrMore(delims.hide() + electrochemical_potential_value)
 )('electrochemical_potential_cell')
 
-subject_phrase = ((I('of') | I('for')) + chemical_name)('subject_phrase')
+subject_phrase_preposition = (I('of') | I('for')) + chemical_name
+# TODO: Come back to this. Hopefully what's here works for most cases, but it fails for L-2-HG. Maybe see if it wouldn't be irresponsible to match \w-\d-\w+
+subject_phrase_concentration = ((chemical_label | chemical_name | prefixed_label) + R('(concentration)s?', re.I).hide())
+subject_phrase = (subject_phrase_preposition | subject_phrase_concentration)('subject_phrase')
 solvent_phrase = (I('in') + (solvent_name | chemical_name))('solvent_phrase')
 
 temp_range = (Optional(R('^[\-–−]$')) + (R('^[\+\-–−]?\d+(\.\d+)?[\-–−]\d+(\.\d+)?$') | (R('^[\+\-–−]?\d+(\.\d+)?$') + R('^[\-–−]$') + R('^[\+\-–−]?\d+(\.\d+)?$'))))('temperature').add_action(merge)
@@ -208,12 +211,11 @@ glass_transition_cell = (
 caption_context = Group(subject_phrase | solvent_phrase | temp_phrase)('caption_context')
 
 
-mc_opt_creatinine = Optional(W('creatinine') | W('Cr'))
-mc_floats = (R('[><~]?\d*\.?\d+[eE]?') + Optional(R('[-+]') + R('\d+'))).add_action(merge)
-mc_joined_range = R('\d*\.?\d+([eE][-+]?\d+)?[\-–−~∼˜][-+]?\d*\.?\d+([eE][-+]?\d+)?')
-mc_spaced_range = (mc_floats + W('[\-–−~∼˜]') + mc_floats).add_action(merge)
-mc_stddev_range = (mc_floats + W('±') + mc_floats).add_action(merge)
-mc_values = (mc_stddev_range | mc_joined_range | mc_spaced_range | mc_floats)('value')
+mc_opt_creatinine = Optional(R('(creatinine|cr|creat)', re.I))
+mc_floats = (R('[><~]?\d+\.?\d+[eE]?') + Optional(R('[-+]') + R('\d+'))).add_action(merge)('value')#Well looks like floats catch ranges now
+mc_range = (mc_floats + R('[\-–−~∼˜]') + mc_floats).add_action(merge)('value')
+mc_value_stddev = (mc_floats + W('±') + mc_floats).add_action(join)('value')
+mc_values = (mc_value_stddev | mc_range | mc_floats)
 
 mc_molar_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?M$')
 mc_mass_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?\s?(mol|g)$')
@@ -221,16 +223,22 @@ mc_volume_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?(mol|l|L)$')
 mc_units = ((mc_molar_unit | (mc_mass_unit + slash + mc_volume_unit)).add_action(merge) + mc_opt_creatinine)('units').add_action(join)
 
 mc_compound_heading = R('(^|\b)(comp((oun)?d)?|substance|analyte|metabolite|metabolic)(e?s)?($|\b)', re.I)
-mc_compound_cell = (cem + optdelim + Optional(mc_units))('mc_cem_phrase') 
+mc_compound = (lenient_chemical_label | lenient_name)('cem')
+mc_compound_cell = (mc_compound + OneOrMore(optdelim) + mc_units)('mc_cem_phrase') 
 
-mc_value_heading = (I('concentration') + optdelim + Optional(mc_units))('mc_value_heading')
-mc_value_cell = (mc_values + optdelim + Optional(mc_units))('mc_value_cell')
+mc_mediums = (R('(saliva|urine|blood|serum|csf|plasma)', re.I))('medium')
+mc_value_words = I('(admission|concentration)')
+mc_value_heading = ((mc_mediums | mc_value_words) + optdelim + Optional(mc_units))('mc_value_heading')
 
+mc_value_units = (mc_values + optdelim + Optional(mc_units))('mc_value_cell')
+mc_value_cell = (mc_floats + delim + R('\d+').hide() + OneOrMore(delim) + mc_floats)('mc_value_cell')
+
+#TODO figure out how to handle units contained in chemical name cells
 
 class CompoundHeadingParser(BaseParser):
     """"""
     root = compound_heading
-
+    
     def interpret(self, result, start, end):
         """"""
         yield Compound()
@@ -688,9 +696,9 @@ class ElectrochemicalPotentialCellParser(BaseParser):
         if c.electrochemical_potentials:
             yield c
 
-
+"""These two parsers seem to run indefinitely, I'm not sure if it's just a consequence of their lax nature or if something is infinitely looping. They're currently unused"""
 class McCompoundHeadingParser(BaseParser):
-    """Checks for heading titles that indicate measured compounds"""
+    """Checks for headings that indicate measured compounds. Currently unused"""
     root = mc_compound_heading
 
     def interpret(self, result, start, end):
@@ -699,7 +707,7 @@ class McCompoundHeadingParser(BaseParser):
 
 
 class McCompoundCellParser(BaseParser):
-    """Checks for measured compound names and contextual units"""
+    """Checks for measured compound names and contextual units. Currently unused"""
     root = mc_compound_cell
 
     def interpret(self, result, start, end):
@@ -719,13 +727,14 @@ class McCompoundCellParser(BaseParser):
 class McValueHeadingParser(BaseParser):
     """Checks for heading titles that indicate chemical concentration measurement values and contextual units"""
     root = mc_value_heading
-
+    
     def interpret(self, result, start, end):
         mc_units = first(result.xpath('./units/text()'))
+        mc_medium = first(result.xpath('./medium/text()'))
         c = Compound()
-        if mc_units:
+        if mc_units or mc_medium:
             c.measured_concentrations.append(
-                MeasuredConcentration(units=mc_units)
+                MeasuredConcentration(units=mc_units, location=mc_medium)
             )
         yield c
 
@@ -735,13 +744,11 @@ class McValueCellParser(BaseParser):
     root = mc_value_cell
 
     def interpret(self, result, start, end):
-        c = Compound(
-            measured_concentrations=[
-                MeasuredConcentration(
-                    value=first(result.xpath('./value/text()')),
-                    units=first(result.xpath('./units/text()'))
-                    )
-                ]
+        c = Compound()
+        mc_units = first(result.xpath('./units/text()')) 
+        for mc_value in result.xpath('./value/text()'):
+            c.measured_concentrations.append(
+                MeasuredConcentration(value=mc_value, units=mc_units)
             )
         yield c
 
@@ -754,7 +761,12 @@ class CaptionContextParser(BaseParser):
 
     def interpret(self, result, start, end):
         name = first(result.xpath('./subject_phrase/name/text()'))
-        c = Compound(names=[name]) if name else Compound()
+        label = first(result.xpath('./subject_phrase/label/text()'))
+        c = Compound()
+        if name is not None:
+            c.names = [name]
+        if label is not None:
+            c.labels = [label]
         context = {}
         # print(etree.tostring(result[0]))
         solvent = first(result.xpath('./solvent_phrase/name/text()'))

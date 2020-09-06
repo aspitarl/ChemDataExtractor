@@ -54,7 +54,6 @@ class Table(CaptionedElement):
         (SolventHeadingParser(), SolventCellParser()),
         (SolventInHeadingParser(),),
         (TempInHeadingParser(),),
-        (McCompoundHeadingParser(), McCompoundCellParser()),
         (McValueHeadingParser(), McValueCellParser())
     ]
 
@@ -220,6 +219,7 @@ class Table(CaptionedElement):
                 for contextual_cell_compound in contextual_cell_compounds:
                     row_compound.merge_contextual(contextual_cell_compound)
                 # If no compound name/label, try take from previous row
+                #TODO Deal with this, it could cause a lot of false records
                 if not row_compound.names and not row_compound.labels and table_records:
                     prev = table_records[-1]
                     row_compound.names = prev.names
@@ -228,6 +228,8 @@ class Table(CaptionedElement):
                 for caption_compound in caption_records:
                     if caption_compound.is_contextual:
                         row_compound.merge_contextual(caption_compound)
+                    elif not row_compound.names:#Added this because of need to merge chemical names found in caption when table rows represent trials, authors, etc
+                        caption_compound.merge_contextual(row_compound)
                 # And also merge from any footnotes that are referenced from the caption
                 for footnote in self.footnotes:
                     if footnote.id in self.caption.references:

@@ -21,7 +21,7 @@ import logging
 import six
 
 from ..utils import python_2_unicode_compatible
-from .text import Paragraph, Citation, Footnote, Heading, Title
+from .text import Paragraph, Citation, Footnote, Heading, Title, BaseCaptionedElement
 from .table import Table
 from .figure import Figure
 from ..errors import ReaderError
