@@ -26,7 +26,7 @@ class NlmXmlReader(XmlReader):
     title_css = 'front article-meta article-title'
     heading_css = 'title'
     table_css = 'table-wrap'
-    table_caption_css = 'caption p'
+    table_caption_css = 'caption p, title'
     table_head_row_css = 'table thead tr'
     table_body_row_css = 'table tbody tr'
     table_footnote_css = 'table-wrap-foot p'

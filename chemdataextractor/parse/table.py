@@ -15,14 +15,14 @@ import logging
 import re
 from lxml.builder import E
 
-from .common import delim, optdelim, slash
+from .common import delim, optdelim, slash, hyph
 from ..utils import first
 from ..model import Compound, UvvisSpectrum, UvvisPeak, QuantumYield, FluorescenceLifetime, MeltingPoint, GlassTransition
 from ..model import ElectrochemicalPotential, IrSpectrum, IrPeak, MeasuredConcentration
 from .actions import join, merge, fix_whitespace
 from .base import BaseParser
-from .cem import chemical_label, label_before_name, chemical_name, chemical_label_phrase, solvent_name, lenient_chemical_label, lenient_name, cem, strict_chemical_label, prefixed_label
-from .elements import R, I, W, Optional, ZeroOrMore, Any, OneOrMore, Start, End, Group, Not
+from .cem import chemical_label, label_before_name, chemical_name, chemical_label_phrase, solvent_name, lenient_chemical_label, lenient_name, prefixed_label
+from .elements import R, I, W, Optional, ZeroOrMore, Any, OneOrMore, Start, End, Group, Not, First, SkipTo
 
 log = logging.getLogger(__name__)
 
@@ -31,8 +31,11 @@ delims = ZeroOrMore(delim)
 minus = R('^[\-–−‒]$')
 
 
-name_blacklist = R('^([\d\.]+)$') | R('\w(controls|control|et al|type)', re.I)
-#(ZeroOrMore(Any()) + R('(controls|et al|type)', re.I) + ZeroOrMore(Any()))
+name_blacklist = R('^([\d\.]+)$')   
+name_token_blacklist = R('^(al|I|II|control|controls|range)$', re.I)#Currently only works if token at end of cell
+#TODO
+'''I spent a lot of time trying to find a solution that would let me disqualify an entire cell if I found a blacklisted
+substring anywhere in the cell, but couldn't. Either I'm missing something or it isn't possible. Must investigate further'''
 #: Compound identifier column heading
 compound_heading = R('(^|\b)(comp((oun)?d)?|molecule|ligand|oligomer|complex|dye|porphyrin|substance|sample|material|catalyst|acronym|isomer|(co)?polymer|chromophore|species|quinone|ether|diene|adduct|acid|radical|monomer|amine|analyte|product|system|(photo)?sensitiser|phthalocyanine|MPc)(e?s)?($|\b)', re.I)
 solvent_heading = R('(^|\b)(solvent)s?($|\b)', re.I)
@@ -42,7 +45,7 @@ compound_cell = Group(
     (Start() + chemical_label + End())('cem') |
     (Start() + lenient_chemical_label + End())('cem') |
     chemical_label_phrase('cem') |
-    (Not(Start() + OneOrMore(name_blacklist) + End()) + OneOrMore(Any())('name').add_action(join).add_action(fix_whitespace) + Optional(W('(').hide() + chemical_label + W(')').hide()))('cem') |
+    (Not((Start() + OneOrMore(name_blacklist) + End()) | SkipTo(name_token_blacklist)) + OneOrMore(Any())('name').add_action(join).add_action(fix_whitespace) + Optional(W('(').hide() + chemical_label + W(')').hide()))('cem') |
     label_before_name
 )('cem_phrase')
 
@@ -208,18 +211,16 @@ glass_transition_cell = (
     temp_with_optional_units + ZeroOrMore(delims.hide() + temp_with_optional_units)
 )('glass_transition_cell')
 
-caption_context = Group(subject_phrase | solvent_phrase | temp_phrase)('caption_context')
-
 
 mc_opt_creatinine = Optional(R('(creatinine|cr|creat)', re.I))
-mc_floats = (R('[><~]?\d+\.?\d+[eE]?') + Optional(R('[-+]') + R('\d+'))).add_action(merge)('value')#Well looks like floats catch ranges now
-mc_range = (mc_floats + R('[\-–−~∼˜]') + mc_floats).add_action(merge)('value')
-mc_value_stddev = (mc_floats + W('±') + mc_floats).add_action(join)('value')
-mc_values = (mc_value_stddev | mc_range | mc_floats)
+mc_float = R('[><~]?\d+\.?\d*')('value')#Removed ability to match scientific notation because it was causing issues, may reimplement later
+mc_range = (mc_float + R('[\-–−~∼˜]') + mc_float).add_action(merge)('value')
+mc_value_stddev = (mc_float + W('±') + mc_float).add_action(join)('value')
+mc_values = (mc_value_stddev | mc_range | mc_float)
 
-mc_molar_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?M$')
-mc_mass_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?\s?(mol|g)$')
-mc_volume_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?(mol|l|L)$')
+mc_molar_unit =  Optional(R('^[YZEPTGMkhcm\u03BCunpfzyad]$')) + W('[YZEPTGkhcm\u03BCunpfzyad]?M')
+mc_mass_unit =  Optional(R('^[YZEPTGMkhcm\u03BCunpfzyad]$')) + R('[YZEPTGkhcm\u03BCunpfzyad]?(mol|g)', re.I)
+mc_volume_unit =  Optional(R('^[YZEPTGMkhcm\u03BCunpfzyad]$')) + R('[YZEPTGkhcm\u03BCunpfzyad]?(mol|l|L)', re.I)
 mc_units = ((mc_molar_unit | (mc_mass_unit + slash + mc_volume_unit)).add_action(merge) + mc_opt_creatinine)('units').add_action(join)
 
 mc_compound_heading = R('(^|\b)(comp((oun)?d)?|substance|analyte|metabolite|metabolic)(e?s)?($|\b)', re.I)
@@ -227,13 +228,17 @@ mc_compound = (lenient_chemical_label | lenient_name)('cem')
 mc_compound_cell = (mc_compound + OneOrMore(optdelim) + mc_units)('mc_cem_phrase') 
 
 mc_mediums = (R('(saliva|urine|blood|serum|csf|plasma)', re.I))('medium')
-mc_value_words = I('(admission|concentration)')
+mc_value_words = R('(admission|concentration)', re.I)
 mc_value_heading = ((mc_mediums | mc_value_words) + optdelim + Optional(mc_units))('mc_value_heading')
 
-mc_value_units = (mc_values + optdelim + Optional(mc_units))('mc_value_cell')
-mc_value_cell = (mc_floats + delim + R('\d+').hide() + OneOrMore(delim) + mc_floats)('mc_value_cell')
-
+mc_value = (mc_values + optdelim + Optional(mc_units))('mc_value_cell')
+mc_value_n_range = (mc_float + delim + R('\d+').hide() + OneOrMore(delim) + mc_range)('mc_value_cell')
+mc_value_range = (mc_float + delim + mc_range)('mc_value_cell')
+mc_value_cell = mc_value_n_range | mc_value_range | mc_value
 #TODO figure out how to handle units contained in chemical name cells
+
+
+caption_context = Group(subject_phrase | solvent_phrase | temp_phrase | mc_units)('caption_context')
 
 class CompoundHeadingParser(BaseParser):
     """"""
@@ -775,6 +780,11 @@ class CaptionContextParser(BaseParser):
         # Melting point shouldn't have contextual temperature
         if context:
             c.melting_points = [MeltingPoint(**context)]
+        mc_units = first(result.xpath('./units/text()'))
+        if mc_units is not None:
+            context['units'] = mc_units
+        if context:
+            c.measured_concentrations = [MeasuredConcentration(**context)]
         temp = first(result.xpath('./temp_phrase'))
         if temp is not None:
             context['temperature'] = first(temp.xpath('./temp/value/text()'))

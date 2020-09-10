@@ -66,7 +66,8 @@ class LxmlReader(six.with_metaclass(ABCMeta, BaseReader)):
             return []
         # if el in refs:
         #     return [element_cls('', references=refs[el])]
-        if el in specials:
+        #Added is not caption as a fix for bolded table captions (<caption><title>caption text<\title><\caption>) being misclassified as headings
+        if el in specials and element_cls is not Caption: 
             return specials[el]
         id = el.get('id', id)
         references = refs.get(el, [])
