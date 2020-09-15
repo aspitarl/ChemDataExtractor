@@ -15,14 +15,14 @@ import logging
 import re
 from lxml.builder import E
 
-from .common import delim
+from .common import delim, optdelim, slash, hyph
 from ..utils import first
 from ..model import Compound, UvvisSpectrum, UvvisPeak, QuantumYield, FluorescenceLifetime, MeltingPoint, GlassTransition
-from ..model import ElectrochemicalPotential, IrSpectrum, IrPeak
+from ..model import ElectrochemicalPotential, IrSpectrum, IrPeak, MeasuredConcentration
 from .actions import join, merge, fix_whitespace
 from .base import BaseParser
-from .cem import chemical_label, label_before_name, chemical_name, chemical_label_phrase, solvent_name, lenient_chemical_label
-from .elements import R, I, W, Optional, ZeroOrMore, Any, OneOrMore, Start, End, Group, Not
+from .cem import chemical_label, label_before_name, chemical_name, chemical_label_phrase, solvent_name, lenient_chemical_label, lenient_name, prefixed_label
+from .elements import R, I, W, Optional, ZeroOrMore, Any, OneOrMore, Start, End, Group, Not, First, SkipTo
 
 log = logging.getLogger(__name__)
 
@@ -31,8 +31,11 @@ delims = ZeroOrMore(delim)
 minus = R('^[\-–−‒]$')
 
 
-name_blacklist = R('^([\d\.]+)$')
-
+name_blacklist = R('^([\d\.]+)$')   
+name_token_blacklist = R('^(al|I|II|control|controls|range)$', re.I)#Currently only works if token at end of cell
+#TODO
+'''I spent a lot of time trying to find a solution that would let me disqualify an entire cell if I found a blacklisted
+substring anywhere in the cell, but couldn't. Either I'm missing something or it isn't possible. Must investigate further'''
 #: Compound identifier column heading
 compound_heading = R('(^|\b)(comp((oun)?d)?|molecule|ligand|oligomer|complex|dye|porphyrin|substance|sample|material|catalyst|acronym|isomer|(co)?polymer|chromophore|species|quinone|ether|diene|adduct|acid|radical|monomer|amine|analyte|product|system|(photo)?sensitiser|phthalocyanine|MPc)(e?s)?($|\b)', re.I)
 solvent_heading = R('(^|\b)(solvent)s?($|\b)', re.I)
@@ -42,10 +45,9 @@ compound_cell = Group(
     (Start() + chemical_label + End())('cem') |
     (Start() + lenient_chemical_label + End())('cem') |
     chemical_label_phrase('cem') |
-    (Not(Start() + OneOrMore(name_blacklist) + End()) + OneOrMore(Any())('name').add_action(join).add_action(fix_whitespace) + Optional(W('(').hide() + chemical_label + W(')').hide()))('cem') |
+    (Not((Start() + OneOrMore(name_blacklist) + End()) | SkipTo(name_token_blacklist)) + OneOrMore(Any())('name').add_action(join).add_action(fix_whitespace) + Optional(W('(').hide() + chemical_label + W(')').hide()))('cem') |
     label_before_name
 )('cem_phrase')
-
 
 uvvis_emi_title = (
     I('emission') + R('max(ima)?') |
@@ -70,6 +72,7 @@ extinction_units = (
         I('l') + I('cm') + minus + I('1') + I('mol') + minus + I('1')
     )) | multiplier
 )('extinction_units').add_action(join)
+
 
 ir_title = (
     R('^(FT-?)?IR$') + Optional(I('absorption'))
@@ -180,7 +183,10 @@ electrochemical_potential_cell = (
     electrochemical_potential_value + ZeroOrMore(delims.hide() + electrochemical_potential_value)
 )('electrochemical_potential_cell')
 
-subject_phrase = ((I('of') | I('for')) + chemical_name)('subject_phrase')
+subject_phrase_preposition = (I('of') | I('for')) + chemical_name
+# TODO: Come back to this. Hopefully what's here works for most cases, but it fails for L-2-HG. Maybe see if it wouldn't be irresponsible to match \w-\d-\w+
+subject_phrase_concentration = ((chemical_label | chemical_name | prefixed_label) + R('(concentration)s?', re.I).hide())
+subject_phrase = (subject_phrase_preposition | subject_phrase_concentration)('subject_phrase')
 solvent_phrase = (I('in') + (solvent_name | chemical_name))('solvent_phrase')
 
 temp_range = (Optional(R('^[\-–−]$')) + (R('^[\+\-–−]?\d+(\.\d+)?[\-–−]\d+(\.\d+)?$') | (R('^[\+\-–−]?\d+(\.\d+)?$') + R('^[\-–−]$') + R('^[\+\-–−]?\d+(\.\d+)?$'))))('temperature').add_action(merge)
@@ -205,13 +211,44 @@ glass_transition_cell = (
     temp_with_optional_units + ZeroOrMore(delims.hide() + temp_with_optional_units)
 )('glass_transition_cell')
 
-caption_context = Group(subject_phrase | solvent_phrase | temp_phrase)('caption_context')
+def strip_superscript(tokens, start, result):
+    result[0].text = re.sub('[a-z]$', '', result[0].text)
+    
+    
+mc_opt_creatinine = Optional(R('(creatinine|cr|creat)', re.I))
+mc_float_non_scientific = R('^[><~]?\d+\.?\d*$')('value')#Removed ability to match scientific notation because it was causing issues, may reimplement later
+mc_float_scientific = (R('^[><~]?\d+\.?\d*E$', re.I) + R('^[-–−+]$') + R('^\d+[a-z]?$').add_action(strip_superscript))('value').add_action(merge)
+mc_float = mc_float_scientific | mc_float_non_scientific
+mc_range = (mc_float + R('[\-–−~∼˜]') + mc_float)('value').add_action(merge)
+mc_value_stddev = (mc_float + W('±') + mc_float)('value').add_action(join)
+mc_values = (mc_range | mc_value_stddev | mc_float)
 
+mc_molar_unit =  Optional(R('^[YZEPTGMkhcm\u03BC\u00B5unpfzyad]$')) + R('^[YZEPTGkhcm\u03BC\u00B5unpfzyad]?M$')
+mc_mass_unit =  Optional(R('^[YZEPTGMkhcm\u03BC\u00B5unpfzyad]$')) + R('^[YZEPTGkhcm\u03BC\u00B5unpfzyad]?(mol|g|M)$', re.I)
+mc_volume_unit =  Optional(R('^[YZEPTGMkhcm\u03BC\u00B5unpfzyad]$')) + R('^[YZEPTGkhcm\u03BC\u00B5unpfzyad]?(mol|l|L|M)$', re.I)
+mc_units = ((mc_molar_unit | (mc_mass_unit + slash + mc_volume_unit)).add_action(merge) + mc_opt_creatinine)('units').add_action(join)
+
+mc_compound_heading = R('(^|\b)(comp((oun)?d)?|substance|analyte|metabolite|metabolic)(e?s)?($|\b)', re.I)
+mc_compound = (lenient_chemical_label | lenient_name)('cem')
+mc_compound_cell = (mc_compound + OneOrMore(optdelim) + mc_units)('mc_cem_phrase') 
+
+mc_mediums = (R('^(saliva|urine|blood|serum|csf|plasma)$', re.I))('medium')
+mc_value_words = R('(admission|concentration)', re.I)
+mc_value_heading = Group(mc_units | mc_mediums | mc_value_words)('mc_value_heading')
+
+mc_value = (mc_values + optdelim + Optional(mc_units))('mc_value_cell')
+mc_value_n_range = (mc_float + delim + R('\d+').hide() + OneOrMore(delim) + mc_range)('mc_value_cell')
+mc_value_range = (mc_float + delim + mc_range)('mc_value_cell')
+mc_value_cell = mc_value_n_range | mc_value_range | mc_value
+#TODO figure out how to handle units contained in chemical name cells
+
+
+caption_context = Group(subject_phrase | solvent_phrase | temp_phrase | mc_units)('caption_context')
 
 class CompoundHeadingParser(BaseParser):
     """"""
     root = compound_heading
-
+    
     def interpret(self, result, start, end):
         """"""
         yield Compound()
@@ -617,6 +654,7 @@ class GlassTransitionHeadingParser(BaseParser):
             )
         yield c
 
+
 class GlassTransitionCellParser(BaseParser):
     """"""
     root = glass_transition_cell
@@ -627,12 +665,13 @@ class GlassTransitionCellParser(BaseParser):
         for tg in result.xpath('./temp'):
             c.glass_transitions.append(
                 GlassTransition(
-                    value=first(mp.xpath('./value/text()')),
-                    units=first(mp.xpath('./units/text()'))
+                    value=first(tg.xpath('./value/text()')),
+                    units=first(tg.xpath('./units/text()'))
                 )
             )
         if c.glass_transition:
             yield c
+
 
 class ElectrochemicalPotentialHeadingParser(BaseParser):
     """"""
@@ -667,6 +706,60 @@ class ElectrochemicalPotentialCellParser(BaseParser):
         if c.electrochemical_potentials:
             yield c
 
+"""These two parsers seem to run indefinitely, I'm not sure if it's just a consequence of their lax nature or if something is infinitely looping. They're currently unused"""
+class McCompoundHeadingParser(BaseParser):
+    """Checks for headings that indicate measured compounds. Currently unused"""
+    root = mc_compound_heading
+
+    def interpret(self, result, start, end):
+        """"""
+        yield Compound()
+
+
+class McCompoundCellParser(BaseParser):
+    """Checks for measured compound names and contextual units. Currently unused"""
+    root = mc_compound_cell
+
+    def interpret(self, result, start, end):
+        c = Compound(
+            names=result.xpath('./cem/name/text()'),
+            labels=result.xpath('./cem/label/text()'),
+        )
+        mc_units = result.xpath('./units/text()')
+        
+        if mc_units:
+            c.measured_concentrations.append(
+                MeasuredConcentration(units=mc_units)
+                )
+            
+        yield c
+
+class McValueHeadingParser(BaseParser):
+    """Checks for heading titles that indicate chemical concentration measurement values and contextual units"""
+    root = mc_value_heading
+    def interpret(self, result, start, end):
+        mc_units = first(result.xpath('./units/text()'))
+        mc_medium = first(result.xpath('./medium/text()'))
+        c = Compound()
+        if mc_units or mc_medium:
+            c.measured_concentrations.append(
+                MeasuredConcentration(units=mc_units, location=mc_medium)
+            )
+        yield c
+
+
+class McValueCellParser(BaseParser):
+    """Checks for chemical concentration values and units"""
+    root = mc_value_cell
+    
+    def interpret(self, result, start, end):
+        c = Compound()
+        mc_units = first(result.xpath('./units/text()')) 
+        for mc_value in result.xpath('./value/text()'):
+            c.measured_concentrations.append(
+                MeasuredConcentration(value=mc_value, units=mc_units)
+            )
+        yield c
 
 class CaptionContextParser(BaseParser):
     """"""
@@ -677,7 +770,12 @@ class CaptionContextParser(BaseParser):
 
     def interpret(self, result, start, end):
         name = first(result.xpath('./subject_phrase/name/text()'))
-        c = Compound(names=[name]) if name else Compound()
+        label = first(result.xpath('./subject_phrase/label/text()'))
+        c = Compound()
+        if name is not None:
+            c.names = [name]
+        if label is not None:
+            c.labels = [label]
         context = {}
         # print(etree.tostring(result[0]))
         solvent = first(result.xpath('./solvent_phrase/name/text()'))
@@ -686,6 +784,11 @@ class CaptionContextParser(BaseParser):
         # Melting point shouldn't have contextual temperature
         if context:
             c.melting_points = [MeltingPoint(**context)]
+        mc_units = first(result.xpath('./units/text()'))
+        if mc_units is not None:
+            context['units'] = mc_units
+        if context:
+            c.measured_concentrations = [MeasuredConcentration(**context)]
         temp = first(result.xpath('./temp_phrase'))
         if temp is not None:
             context['temperature'] = first(temp.xpath('./temp/value/text()'))

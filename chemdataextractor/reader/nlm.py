@@ -26,7 +26,7 @@ class NlmXmlReader(XmlReader):
     title_css = 'front article-meta article-title'
     heading_css = 'title'
     table_css = 'table-wrap'
-    table_caption_css = 'caption p'
+    table_caption_css = 'caption p, title'
     table_head_row_css = 'table thead tr'
     table_body_row_css = 'table tbody tr'
     table_footnote_css = 'table-wrap-foot p'
@@ -52,8 +52,10 @@ class NlmXmlReader(XmlReader):
             return False
         if b'xmlns="http://jats.nlm.nih.gov/ns/archiving' in fstring:
             return True
+        if b'xmlns="https://jats.nlm.nih.gov/ns/archiving' in fstring:
+            return True
         if b'JATS-archivearticle1.dtd' in fstring:
             return True
-        if b'-//NLM//DTD JATS' in fstring:
+        if b'-//NLM//DTD J' in fstring:
             return True
         return False

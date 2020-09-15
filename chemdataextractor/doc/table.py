@@ -21,7 +21,8 @@ from ..parse.table import CompoundHeadingParser, CompoundCellParser, UvvisAbsHea
     ElectrochemicalPotentialHeadingParser, ElectrochemicalPotentialCellParser, IrHeadingParser, IrCellParser, \
     SolventCellParser, SolventHeadingParser, SolventInHeadingParser, UvvisAbsEmiQuantumYieldHeadingParser, \
     UvvisAbsEmiQuantumYieldCellParser, MeltingPointHeadingParser, MeltingPointCellParser, GlassTransitionHeadingParser, GlassTransitionCellParser, TempInHeadingParser, \
-    UvvisAbsDisallowedHeadingParser, UvvisEmiQuantumYieldHeadingParser, UvvisEmiQuantumYieldCellParser
+    UvvisAbsDisallowedHeadingParser, UvvisEmiQuantumYieldHeadingParser, UvvisEmiQuantumYieldCellParser, McCompoundHeadingParser, McCompoundCellParser, \
+    McValueHeadingParser, McValueCellParser
 # TODO: Sort out the above import... import module instead
 from ..nlp.tag import NoneTagger
 from ..nlp.tokenize import FineWordTokenizer
@@ -31,6 +32,7 @@ from .text import Sentence
 
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 
 class Table(CaptionedElement):
@@ -51,7 +53,8 @@ class Table(CaptionedElement):
         (GlassTransitionHeadingParser(), GlassTransitionCellParser()),
         (SolventHeadingParser(), SolventCellParser()),
         (SolventInHeadingParser(),),
-        (TempInHeadingParser(),)
+        (TempInHeadingParser(),),
+        (McValueHeadingParser(), McValueCellParser())
     ]
 
     def __init__(self, caption, label=None, headings=None, rows=None, footnotes=None, **kwargs):
@@ -115,7 +118,7 @@ class Table(CaptionedElement):
         log.debug('Parsing table headers')
 
         for i, col_headings in enumerate(zip(*self.headings)):
-            # log.info('Considering column %s' % i)
+            log.info('Considering column %s' % i)
             for parsers in self.parsers:
                 log.debug(parsers)
                 heading_parser = parsers[0]
@@ -216,6 +219,7 @@ class Table(CaptionedElement):
                 for contextual_cell_compound in contextual_cell_compounds:
                     row_compound.merge_contextual(contextual_cell_compound)
                 # If no compound name/label, try take from previous row
+                #TODO Deal with this, it could cause a lot of false records
                 if not row_compound.names and not row_compound.labels and table_records:
                     prev = table_records[-1]
                     row_compound.names = prev.names
@@ -224,6 +228,8 @@ class Table(CaptionedElement):
                 for caption_compound in caption_records:
                     if caption_compound.is_contextual:
                         row_compound.merge_contextual(caption_compound)
+                    elif not row_compound.names:#Added this because of need to merge chemical names found in caption when table rows represent trials, authors, etc
+                        caption_compound.merge_contextual(row_compound)
                 # And also merge from any footnotes that are referenced from the caption
                 for footnote in self.footnotes:
                     if footnote.id in self.caption.references:

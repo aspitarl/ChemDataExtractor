@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-chemdataextractor.parse.nmr
+chemdataextractor.parse.mp
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-NMR text parser.
+Melting point text parser.
 
 """
 

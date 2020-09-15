@@ -434,6 +434,16 @@ class ElectrochemicalPotential(BaseModel):
     temperature_units = StringType(contextual=True)
     apparatus = StringType(contextual=True)
 
+class MeasuredConcentration(BaseModel):
+    """The concentration of a chemical measured in a medium such as blood or urine"""
+    value = StringType()#TODO consider whether FloatType would be more appropriate
+    units = StringType(contextual=True)
+    location = StringType(contextual=True)
+    stddev = StringType(contextual=True)
+    # This is being put in ad-hoc so I can test my results against the HMDB.
+    # Otherwise, my vision for this parser is to be narrowly tailored
+    # to concentrations that have actually been measured
+    normal_concentration = StringType(contextual=True)
 
 class Compound(BaseModel):
     names = ListType(StringType())
@@ -447,6 +457,7 @@ class Compound(BaseModel):
     quantum_yields = ListType(ModelType(QuantumYield))
     fluorescence_lifetimes = ListType(ModelType(FluorescenceLifetime))
     electrochemical_potentials = ListType(ModelType(ElectrochemicalPotential))
+    measured_concentrations = ListType(ModelType(MeasuredConcentration))
 
     def merge(self, other):
         """Merge data from another Compound into this Compound."""

@@ -22,6 +22,7 @@ import six
 
 from ..utils import python_2_unicode_compatible
 from .text import Paragraph, Citation, Footnote, Heading, Title
+from .element import CaptionedElement
 from .table import Table
 from .figure import Figure
 from ..errors import ReaderError
@@ -337,7 +338,7 @@ class Document(BaseDocument):
     @property
     def captioned_elements(self):
         """Return all Captioned Elements in this Document."""
-        return [el for el in self.elements if isinstance(el, BaseCaptionedElement)]
+        return [el for el in self.elements if isinstance(el, CaptionedElement)]
 
     @property
     def abbreviation_definitions(self):
