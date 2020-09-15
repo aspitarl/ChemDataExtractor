@@ -44,9 +44,9 @@ values = (joined_range | spaced_range | to_range | floats | stddev_range)('value
 
 opt_creatinine = Optional(W('creatinine') | W('Cr'))
 
-molar_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?M$')
-mass_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?(mol|g)$')#I know that moles are a unit of quantity, don't @ me
-volume_unit =  R('^[YZEPTGMkhcm\u03BCunpfzyad]?(mol|l|L)$')
+molar_unit =  R('^[YZEPTGMkhcm\u03BC\u00B5unpfzyad]?M$')
+mass_unit =  R('^[YZEPTGMkhcm\u03BC\u00B5unpfzyad]?(mol|g)$')#I know that moles are a unit of quantity, don't @ me
+volume_unit =  R('^[YZEPTGMkhcm\u03BC\u00B5unpfzyad]?(mol|l|L)$')
 units = ((molar_unit | mass_unit + slash + volume_unit).add_action(merge) + opt_creatinine)('units').add_action(join)
 
 left_bracket_parentheses = R('[[(]')

@@ -211,25 +211,30 @@ glass_transition_cell = (
     temp_with_optional_units + ZeroOrMore(delims.hide() + temp_with_optional_units)
 )('glass_transition_cell')
 
-
+def strip_superscript(tokens, start, result):
+    result[0].text = re.sub('[a-z]$', '', result[0].text)
+    
+    
 mc_opt_creatinine = Optional(R('(creatinine|cr|creat)', re.I))
-mc_float = R('[><~]?\d+\.?\d*')('value')#Removed ability to match scientific notation because it was causing issues, may reimplement later
-mc_range = (mc_float + R('[\-–−~∼˜]') + mc_float).add_action(merge)('value')
-mc_value_stddev = (mc_float + W('±') + mc_float).add_action(join)('value')
-mc_values = (mc_value_stddev | mc_range | mc_float)
+mc_float_non_scientific = R('^[><~]?\d+\.?\d*$')('value')#Removed ability to match scientific notation because it was causing issues, may reimplement later
+mc_float_scientific = (R('^[><~]?\d+\.?\d*E$', re.I) + R('^[-–−+]$') + R('^\d+[a-z]?$').add_action(strip_superscript))('value').add_action(merge)
+mc_float = mc_float_scientific | mc_float_non_scientific
+mc_range = (mc_float + R('[\-–−~∼˜]') + mc_float)('value').add_action(merge)
+mc_value_stddev = (mc_float + W('±') + mc_float)('value').add_action(join)
+mc_values = (mc_range | mc_value_stddev | mc_float)
 
-mc_molar_unit =  Optional(R('^[YZEPTGMkhcm\u03BCunpfzyad]$')) + W('[YZEPTGkhcm\u03BCunpfzyad]?M')
-mc_mass_unit =  Optional(R('^[YZEPTGMkhcm\u03BCunpfzyad]$')) + R('[YZEPTGkhcm\u03BCunpfzyad]?(mol|g)', re.I)
-mc_volume_unit =  Optional(R('^[YZEPTGMkhcm\u03BCunpfzyad]$')) + R('[YZEPTGkhcm\u03BCunpfzyad]?(mol|l|L)', re.I)
+mc_molar_unit =  Optional(R('^[YZEPTGMkhcm\u03BC\u00B5unpfzyad]$')) + R('^[YZEPTGkhcm\u03BC\u00B5unpfzyad]?M$')
+mc_mass_unit =  Optional(R('^[YZEPTGMkhcm\u03BC\u00B5unpfzyad]$')) + R('^[YZEPTGkhcm\u03BC\u00B5unpfzyad]?(mol|g|M)$', re.I)
+mc_volume_unit =  Optional(R('^[YZEPTGMkhcm\u03BC\u00B5unpfzyad]$')) + R('^[YZEPTGkhcm\u03BC\u00B5unpfzyad]?(mol|l|L|M)$', re.I)
 mc_units = ((mc_molar_unit | (mc_mass_unit + slash + mc_volume_unit)).add_action(merge) + mc_opt_creatinine)('units').add_action(join)
 
 mc_compound_heading = R('(^|\b)(comp((oun)?d)?|substance|analyte|metabolite|metabolic)(e?s)?($|\b)', re.I)
 mc_compound = (lenient_chemical_label | lenient_name)('cem')
 mc_compound_cell = (mc_compound + OneOrMore(optdelim) + mc_units)('mc_cem_phrase') 
 
-mc_mediums = (R('(saliva|urine|blood|serum|csf|plasma)', re.I))('medium')
+mc_mediums = (R('^(saliva|urine|blood|serum|csf|plasma)$', re.I))('medium')
 mc_value_words = R('(admission|concentration)', re.I)
-mc_value_heading = ((mc_mediums | mc_value_words) + optdelim + Optional(mc_units))('mc_value_heading')
+mc_value_heading = Group(mc_units | mc_mediums | mc_value_words)('mc_value_heading')
 
 mc_value = (mc_values + optdelim + Optional(mc_units))('mc_value_cell')
 mc_value_n_range = (mc_float + delim + R('\d+').hide() + OneOrMore(delim) + mc_range)('mc_value_cell')
@@ -732,7 +737,6 @@ class McCompoundCellParser(BaseParser):
 class McValueHeadingParser(BaseParser):
     """Checks for heading titles that indicate chemical concentration measurement values and contextual units"""
     root = mc_value_heading
-    
     def interpret(self, result, start, end):
         mc_units = first(result.xpath('./units/text()'))
         mc_medium = first(result.xpath('./medium/text()'))
@@ -747,7 +751,7 @@ class McValueHeadingParser(BaseParser):
 class McValueCellParser(BaseParser):
     """Checks for chemical concentration values and units"""
     root = mc_value_cell
-
+    
     def interpret(self, result, start, end):
         c = Compound()
         mc_units = first(result.xpath('./units/text()')) 
