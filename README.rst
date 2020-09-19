@@ -23,14 +23,14 @@ Installation
 ------------
 To install the development branch of this fork of ChemDataExtractor, simply run::
 
-    pip install git+https://github.com/maddenfederico/ChemDataExtractor@concentrationextractor
+    pip install git+https://github.com/maddenfederico/ChemDataExtractor
 
 
 
 Documentation
 -------------
 
-Full documentation is available at http://chemdataextractor.org/docs
+Full documentation is available at http://chemdataextractor.org/docs, with supplementary documentation 
 
 
 License
