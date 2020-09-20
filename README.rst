@@ -21,7 +21,7 @@ Features
 Future Improvements
 --------
 
-- Support for table layouts
+- Support for more table layouts
 - Improved documentation
 
 Installation
