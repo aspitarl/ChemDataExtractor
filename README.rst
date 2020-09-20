@@ -39,7 +39,7 @@ Full documentation is available at http://chemdataextractor.org/docs
 
 For easy extraction of measured chemical concentrations as a tab-separated spreadsheet, use extract_concentrations.py in an environment with ChemDataExtractor installed
     
-    python [path to extract_concentration.py] [path to full-text article]
+``python [path to extract_concentration.py] [path to full-text article]``
    
     
 
