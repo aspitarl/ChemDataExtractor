@@ -18,10 +18,15 @@ Features
 - Table parser for extracting tabulated data
 - Document processing to resolve data interdependencies
 
+Future Improvements
+--------
+
+- Support for table layouts
+- Improved documentation
 
 Installation
 ------------
-To install the development branch of this fork of ChemDataExtractor, simply run::
+To install this fork of ChemDataExtractor, simply run in a terminal::
 
     pip install git+https://github.com/maddenfederico/ChemDataExtractor
 
@@ -32,6 +37,11 @@ Documentation
 
 Full documentation is available at http://chemdataextractor.org/docs
 
+For easy extraction of measured chemical concentrations as a tab-separated spreadsheet, use extract_concentrations.py in an environment with ChemDataExtractor installed
+    
+    python [path to extract_concentration.py] [path to full-text article]
+   
+    
 
 License
 -------
