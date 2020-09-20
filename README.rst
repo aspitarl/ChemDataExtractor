@@ -30,7 +30,7 @@ To install the development branch of this fork of ChemDataExtractor, simply run:
 Documentation
 -------------
 
-Full documentation is available at http://chemdataextractor.org/docs, with supplementary documentation 
+Full documentation is available at http://chemdataextractor.org/docs
 
 
 License
