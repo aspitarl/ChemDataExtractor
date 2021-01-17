@@ -53,8 +53,8 @@ class Table(CaptionedElement):
         (GlassTransitionHeadingParser(), GlassTransitionCellParser()),
         (SolventHeadingParser(), SolventCellParser()),
         (SolventInHeadingParser(),),
-        (TempInHeadingParser(),),
-        (McValueHeadingParser(), McValueCellParser())
+        (TempInHeadingParser(),)
+        #(McValueHeadingParser(), McValueCellParser())
     ]
 
     def __init__(self, caption, label=None, headings=None, rows=None, footnotes=None, **kwargs):
